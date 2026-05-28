@@ -1,0 +1,56 @@
+## Description
+##
+## What it does:     Pre-commit code review gate: auto-detects local changes, runs
+##                   unified code review (security + quality), auto-fixes up to
+##                   2 cycles, and commits with [verified] prefix if clean.
+##                   Runs ~30-60 seconds for small diffs.
+## Who it's for:     Developers who want a safety net before every commit.
+##                   Works on any Git repo — auto-detects local dirty work.
+## Prerequisites:    - Git repository
+##                   - unified-code-review skill available in Hermes Agent
+##                   - Staged or unstaged changes to review
+## Example usage:    hermes workflow run community/pre-commit-review --native
+##
+# Pre-Commit Review Pipeline
+# Quick gate: security scan → tests → independent reviewer → auto-fix
+# Use before every commit. Runs ~30-60 seconds for small diffs.
+name: "Pre-Commit Review"
+description: "Quick pre-commit review: security scan, tests, independent reviewer, auto-fix"
+version: "1.0"
+
+steps:
+  # =========================================================================
+  # Step 1: Run unified code review (auto-detect local mode)
+  # =========================================================================
+  - id: review
+    name: "Unified code review (auto-detect)"
+    type: skill
+    skill: unified-code-review
+    input:
+      mode: auto
+
+  # =========================================================================
+  # Step 2: Commit if clean
+  # =========================================================================
+  - id: commit
+    name: "Commit with [verified] prefix"
+    type: command
+    depends_on: review
+    command: |
+      if git diff --cached --quiet && git diff --quiet; then
+        echo "=== Nothing to commit ==="
+      else
+        git add -A
+        git commit -m "[verified] $(git diff --cached --stat | tail -1 | awk '{print $1}') files changed"
+        echo "=== Committed with [verified] ==="
+      fi
+
+# ===========================================================================
+# Usage:
+#   hermes workflow run pre-commit-review
+#
+# Auto-detects local dirty work, runs full review pipeline.
+# If clean → commits with [verified] prefix.
+# If findings → auto-fix (max 2 cycles) → re-review.
+# If still failing → escalates to user.
+# ===========================================================================

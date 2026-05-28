@@ -1,0 +1,17 @@
+# GitHub webhook configuration for Hermes workflow triggers.
+#
+# Endpoint: POST /webhook/github
+# Events → workflow mapping.  Override defaults by adding entries here.
+#
+# Supported GitHub events: push, pull_request, issues
+
+port: 9001
+secret: ""  # Set your GitHub webhook secret here
+
+routes:
+  push:
+    workflow: codebase-audit
+  pull_request:
+    workflow: pre-commit-review
+  issues:
+    workflow: branch-review   # triage-like workflow

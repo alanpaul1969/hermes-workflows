@@ -1,0 +1,228 @@
+## Description
+##
+## What it does:     Automated Flutter APK build pipeline (Gates 4-6): audit on
+##                   Mac mini → git push → flutter build APK → scp delivery to
+##                   DGX Spark. Checks for TODO/FIXME/HACK, requireValue,
+##                   Firebase, and foreground service violations before building.
+## Who it's for:     Flutter developers with a multi-machine setup (build host +
+##                   development host). Alaya.love project specific but easily
+##                   adapted — just change the variables section for your paths.
+## Prerequisites:    - SSH access to a Mac build host (with Flutter SDK)
+##                   - Git remote configured for the Mac mini
+##                   - flutter build apk --debug environment on the Mac
+##                   - Variables to update: dgx_project, mac_mini, mac_project,
+##                     apk_delivery (adjust for your setup)
+## Example usage:    hermes workflow run community/alaya-build --native
+##
+# Alaya.love Automated Build Pipeline (May 2026)
+# Gates 4-6 only — assumes Gates 0-3 (sync/plan/implement/review) are already done.
+# Runs: audit on Mac mini → git push → flutter build → ship APK to DGX Spark
+# Usage: hermes workflow run alaya-build
+name: "Alaya Build"
+description: "自動建置 pipeline：審計→建置→交付（Gate 4→5→6），假設 Gate 0-3 已完成"
+version: "1.0"
+
+variables:
+  dgx_project: "~/flutter_projects/autopkm_desktop_bridge"
+  mac_mini: "alanpaul@192.168.1.23"
+  mac_project: "/Volumes/Raid5/share/Obsidian/Automatic_PKM/AutoPKM_app"
+  apk_delivery: "~/ai-labs/projects/alaya-love/AutoPKM_Neo_app/AutoPKM_Desktop_Bridge_app"
+
+steps:
+  # ═══════════════════════════════════════════════════════════════
+  # Gate 4: Pre-build Audit — 在 Mac mini 上檢查 Flutter 程式碼
+  # ═══════════════════════════════════════════════════════════════
+  - id: audit
+    name: "🛡️ Gate 4: 審計（Mac mini）"
+    type: command
+    command: |
+      echo "══════════════════════════════════════════════"
+      echo "  Gate 4: 自動審計（Mac mini）"
+      echo "══════════════════════════════════════════════"
+      echo ""
+
+      AUDIT_SCRIPT='
+        cd $variables.mac_project
+        FAIL=0
+
+        # Check 1: TODO / FIXME / HACK
+        echo ">>> Check 1: TODO / FIXME / HACK..."
+        HITS=$(grep -rn "TODO\|FIXME\|HACK" lib/ --include="*.dart" 2>/dev/null | grep -v "//.*TODO\|//.*FIXME\|//.*HACK" | head -5)
+        if [ -n "$HITS" ]; then
+          echo "❌ 發現殘留標記："
+          echo "$HITS"
+          FAIL=1
+        else
+          echo "✅ 無殘留標記"
+        fi
+        echo ""
+
+        # Check 2: requireValue
+        echo ">>> Check 2: requireValue..."
+        RV=$(grep -rn "requireValue" lib/ --include="*.dart" 2>/dev/null | head -5)
+        if [ -n "$RV" ]; then
+          echo "❌ 發現 requireValue："
+          echo "$RV"
+          echo "⚠️  請改為 safe cast 或 null check"
+          FAIL=1
+        else
+          echo "✅ 無 requireValue"
+        fi
+        echo ""
+
+        # Check 3: Firebase
+        echo ">>> Check 3: Firebase..."
+        FB=$(grep -rn "firebase" lib/ android/app/ --include="*.dart" --include="*.gradle" --include="*.xml" 2>/dev/null | head -5)
+        if [ -n "$FB" ]; then
+          echo "❌ 發現 Firebase 引用："
+          echo "$FB"
+          echo "⚠️  Firebase 會導致 Android 16 安裝失敗"
+          FAIL=1
+        else
+          echo "✅ 無 Firebase"
+        fi
+        echo ""
+
+        # Check 4: foreground service
+        echo ">>> Check 4: foreground service..."
+        FG=$(grep -rn "foreground" android/app/ lib/ --include="*.dart" --include="*.xml" --include="*.kt" --include="*.java" 2>/dev/null | head -5)
+        if [ -n "$FG" ]; then
+          echo "❌ 發現 foreground service："
+          echo "$FG"
+          FAIL=1
+        else
+          echo "✅ 無 foreground service"
+        fi
+        echo ""
+
+        if [ "$FAIL" -eq 1 ]; then
+          echo "══════════════════════════════════════════════"
+          echo "  ❌ 審計失敗 — 請修正後重試"
+          echo "══════════════════════════════════════════════"
+          exit 1
+        else
+          echo "══════════════════════════════════════════════"
+          echo "  ✅ 審計通過"
+          echo "══════════════════════════════════════════════"
+        fi
+      '
+
+      ssh $variables.mac_mini "bash -s" <<< "$AUDIT_SCRIPT"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Gate 5: Build — git push DGX → Mac mini + flutter build apk --debug
+  # ═══════════════════════════════════════════════════════════════
+  - id: build
+    name: "🔨 Gate 5: 建置"
+    type: command
+    depends_on: audit
+    command: |
+      echo "══════════════════════════════════════════════"
+      echo "  Gate 5: 建置中..."
+      echo "══════════════════════════════════════════════"
+      echo ""
+
+      # Stash any local changes on Mac mini
+      ssh $variables.mac_mini "cd $variables.mac_project && git stash" 2>/dev/null || true
+
+      # Push DGX → Mac mini
+      echo ">>> git push DGX → Mac mini..."
+      cd $variables.dgx_project
+      git push mac master 2>&1
+      if [ $? -ne 0 ]; then
+        echo "❌ git push 失敗"
+        exit 1
+      fi
+      echo "✅ git push 完成"
+      echo ""
+
+      # Restore stashed changes & build on Mac mini
+      echo ">>> flutter build apk --debug（Mac mini）..."
+      ssh $variables.mac_mini "
+        export PATH=\"/Users/alanpaul/flutter/bin:\$PATH\"
+        cd $variables.mac_project
+        git stash pop 2>/dev/null || true
+        flutter clean 2>/dev/null
+        flutter build apk --debug 2>&1
+      " | grep -E "✓ Built|Error|FAILURE|BUILD|Running"
+
+      echo ""
+      echo ">>> 確認 APK："
+      ssh $variables.mac_mini "ls -lh $variables.mac_project/build/app/outputs/flutter-apk/app-debug.apk" 2>/dev/null
+      if [ $? -ne 0 ]; then
+        echo "❌ APK 不存在 — build 可能失敗"
+        exit 1
+      fi
+      echo "✅ Build 完成"
+      echo "══════════════════════════════════════════════"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Gate 6: Ship — SCP APK from Mac mini to DGX Spark delivery
+  # ═══════════════════════════════════════════════════════════════
+  - id: ship
+    name: "🚀 Gate 6: 交付"
+    type: command
+    depends_on: build
+    command: |
+      echo "══════════════════════════════════════════════"
+      echo "  Gate 6: 交付"
+      echo "══════════════════════════════════════════════"
+      echo ""
+
+      # Extract version from git log
+      cd $variables.dgx_project
+      VERSION=$(git log --oneline -1 | grep -oP 'b\d+' | head -1)
+      if [ -z "$VERSION" ]; then
+        VERSION="latest"
+      fi
+      echo ">>> 版本: $VERSION"
+
+      # Create delivery directory if needed
+      mkdir -p $variables.apk_delivery
+
+      # SCP APK from Mac mini to DGX Spark
+      echo ">>> scp APK from Mac mini → DGX Spark..."
+      scp $variables.mac_mini:$variables.mac_project/build/app/outputs/flutter-apk/app-debug.apk \
+        $variables.apk_delivery/app-debug-${VERSION}.apk 2>&1
+
+      if [ $? -eq 0 ]; then
+        SIZE=$(ls -lh $variables.apk_delivery/app-debug-${VERSION}.apk | awk '{print $5}')
+        echo "✅ APK 已交付"
+        echo ""
+        echo "============================================"
+        echo "  📦 $variables.apk_delivery/app-debug-${VERSION}.apk"
+        echo "  📏 $SIZE"
+        echo "============================================"
+      else
+        echo "❌ SCP 失敗"
+        exit 1
+      fi
+      echo ""
+
+      echo "══════════════════════════════════════════════"
+      echo "  ✅ Pipeline 完成"
+      echo "══════════════════════════════════════════════"
+      echo ""
+      echo "  📱 下一步：安裝到裝置，手動 QA："
+      echo "    1. 所有畫面正常（無黑屏白屏）"
+      echo "    2. 導航正常（hamburger → 所有頁面）"
+      echo "    3. 新功能正確運作"
+
+# ===========================================================================
+# Usage:
+#   hermes workflow run alaya-build
+#
+# Assumes:
+#   - Gate 0 (sync): DGX is in sync with Mac mini
+#   - Gate 1 (plan): plan/specs/tasks are written
+#   - Gate 2 (implement): code changes are complete & committed
+#   - Gate 3 (review): human review is done
+#
+# This workflow runs the automated gated 4-6 only:
+#   Gate 4 (audit): SSH to Mac mini, grep for TODO/FIXME/HACK/
+#                    requireValue/firebase/foreground
+#   Gate 5 (build): git push + flutter build apk --debug on Mac mini
+#   Gate 6 (ship):  scp APK to DGX Spark delivery path with version
+#
+# Each gate depends on the previous one and fails fast.
+# ===========================================================================

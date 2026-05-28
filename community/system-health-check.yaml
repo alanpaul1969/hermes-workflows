@@ -1,0 +1,30 @@
+## Description
+##
+## What it does:     Daily system health check — disk usage, memory, and bridge/API
+##                   endpoint liveness. Runs 3 fast checks and reports status.
+## Who it's for:     Everyone running Hermes Agent. Universal monitoring that
+##                   catches resource pressure before it becomes a problem.
+## Prerequisites:    None. Uses standard Unix tools (df, free, awk, curl).
+##                   Backend bridge check assumes a local service on port 8002
+##                   (configure backend_port variable for your environment).
+## Example usage:    hermes workflow run community/system-health-check --native
+##
+name: "System Health Check"
+description: "Daily system health — disk, memory, bridge status"
+version: "1.0"
+variables:
+  backend_port: "8002"
+
+steps:
+  - id: disk
+    name: "Disk usage"
+    type: command
+    command: "df -h / | tail -1 | awk '{print \"Disk: \"$3\"/\"$2\" (\"$5\")\"}'"
+  - id: memory
+    name: "Memory"
+    type: command
+    command: "free -h | grep Mem | awk '{print \"Mem: \"$3\"/\"$2\" free=\"$7}'"
+  - id: bridge
+    name: "Bridge health"
+    type: command
+    command: "curl -s -o /dev/null -w '%{http_code}' http://localhost:$variables.backend_port/health && echo ' bridge-ok' || echo ' bridge-down'"

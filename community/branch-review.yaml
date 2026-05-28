@@ -1,0 +1,57 @@
+## Description
+##
+## What it does:     Pre-merge branch review gate: diffs current branch against
+##                   origin/main, runs full unified code review in branch mode,
+##                   checks commit message quality, flags high-churn files
+##                   (>200 lines), verifies cross-task consistency, and
+##                   checks for merge conflicts against main.
+## Who it's for:     Team leads, reviewers, and developers preparing to merge
+##                   feature branches. Catches issues before they hit main.
+## Prerequisites:    - Git repository with origin/main accessible
+##                   - unified-code-review skill available in Hermes Agent
+##                   - Current branch has commits not yet on main
+##                   - Optional: IMPLEMENTATION_PLAN.md for cross-task checks
+## Example usage:    hermes workflow run community/branch-review --native
+##
+# Feature Branch Review
+# Pre-merge gate: full branch review with commit quality + churn analysis
+name: "Branch Review"
+description: "Pre-merge branch review: diff audit, commit quality, churn analysis, independent review"
+version: "1.0"
+
+steps:
+  # =========================================================================
+  # Step 1: Branch review (with extra branch-mode checks)
+  # =========================================================================
+  - id: review
+    name: "Branch code review (vs origin/main)"
+    type: skill
+    skill: unified-code-review
+    input:
+      mode: branch
+      base: origin/main
+
+  # =========================================================================
+  # Step 2: Merge check
+  # =========================================================================
+  - id: merge-check
+    name: "Check merge conflicts"
+    type: command
+    depends_on: review
+    command: |
+      git fetch origin main
+      if git merge-base --is-ancestor HEAD origin/main; then
+        echo "=== Fast-forward possible, no conflicts ==="
+      else
+        git merge-tree $(git merge-base HEAD origin/main) HEAD origin/main | grep -q "^<<<<<<<" && echo "⚠️  MERGE CONFLICTS DETECTED" || echo "=== Auto-merge OK ==="
+      fi
+
+# ===========================================================================
+# Usage:
+#   hermes workflow run branch-review
+#
+# Reviews all commits on branch vs origin/main.
+# Extra checks: commit message quality, file churn (>200 lines = flag),
+# cross-task consistency (if IMPLEMENTATION_PLAN.md exists).
+# After clean review, checks for merge conflicts.
+# ===========================================================================
