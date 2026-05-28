@@ -72,3 +72,7 @@ webhook.yaml         # Webhook route configuration
 ## License
 
 MIT
+
+## Related
+
+- **[yflow](https://github.com/alanpaul1969/yflow)** — Standalone pip-installable workflow engine (`pip install yflow`). Same YAML schema, runs anywhere without Hermes. The `hermes-workflows` plugin is the Hermes-native counterpart; `yflow` is the provider-agnostic standalone.
