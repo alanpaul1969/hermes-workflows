@@ -1,0 +1,54 @@
+## Description
+##
+## What it does:     Read-only X/Twitter signal brief using Hermes Tweet and
+##                   Xquik. The
+##                   workflow loads the hermes-tweet skill, discovers public
+##                   read routes with tweet_explore, gathers signal with
+##                   tweet_read, and leaves tweet_action disabled.
+## Who it's for:     Hermes Agent operators tracking launches, incidents,
+##                   community feedback, or public account activity on X.
+## Prerequisites:    - Hermes Tweet installed in the Hermes runtime
+##                   - XQUIK_API_KEY set where Hermes executes tools
+##                   - HERMES_TWEET_ENABLE_ACTIONS left unset for read-only use
+## Example usage:    hermes workflow run community/hermes-tweet-signal-brief --native
+##
+name: "Hermes Tweet Signal Brief"
+description: "Read-only X/Twitter signal brief with Hermes Tweet"
+version: "1.0"
+
+variables:
+  topic: "Hermes Agent"
+  window: "last 24 hours"
+  max_results: "20"
+
+steps:
+  - id: route-discovery
+    name: "Find Hermes Tweet read routes"
+    type: skill
+    skill: hermes-tweet
+    input:
+      task: "Use tweet_explore to find catalog-listed public read routes for the topic. Do not call tweet_action."
+      topic: "$variables.topic"
+
+  - id: collect-signals
+    name: "Collect public X signals"
+    type: skill
+    skill: hermes-tweet
+    depends_on: route-discovery
+    input:
+      task: "Use tweet_read on catalog-listed public read endpoints only. Summarize mentions, accounts, links, and trend signals. Keep tweet_action disabled."
+      topic: "$variables.topic"
+      window: "$variables.window"
+      max_results: "$variables.max_results"
+
+  - id: brief
+    name: "Write signal brief"
+    type: subagent
+    depends_on: collect-signals
+    context: |
+      Turn the Hermes Tweet read-only signal collection into a concise brief:
+      - Topic and time window
+      - Top recurring messages
+      - Accounts or links to review
+      - Potential follow-up searches
+      - Note clearly if no strong public signal appears

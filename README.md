@@ -6,7 +6,8 @@ Community marketplace and plugin for Hermes Agent workflow orchestration.
 
 ```bash
 # Plugin (engine + CLI + webhook)
-cp -r plugins/workflow ~/.hermes/plugins/workflow
+mkdir -p ~/.hermes/plugins/workflow
+cp plugins/*.py ~/.hermes/plugins/workflow/
 
 # Community workflows
 cp -r community ~/.hermes/workflows/community
@@ -25,6 +26,7 @@ Shareable workflow YAMLs in `community/`:
 | `alaya-build` | CI/CD | Flutter APK build pipeline: audit → build → ship |
 | `pre-commit-review` | Code Review | Pre-commit gate with auto-fix + [verified] commit |
 | `branch-review` | Code Review | Pre-merge: diff analysis + churn + conflict check |
+| `hermes-tweet-signal-brief` | Monitoring | Read-only X/Twitter signal brief using Hermes Tweet routes |
 
 ### Usage
 
@@ -64,7 +66,8 @@ community/
 ├── system-health-check.yaml
 ├── alaya-build.yaml
 ├── pre-commit-review.yaml
-└── branch-review.yaml
+├── branch-review.yaml
+└── hermes-tweet-signal-brief.yaml
 
 webhook.yaml         # Webhook route configuration
 ```
@@ -72,6 +75,10 @@ webhook.yaml         # Webhook route configuration
 ## License
 
 MIT
+
+## Trademark Notice
+
+Xquik is an independent third-party service. Not affiliated with X Corp. "Twitter" and "X" are trademarks of X Corp.
 
 ## Related
 
