@@ -48,9 +48,12 @@ def validate_workflow(data: dict) -> List[str]:
             errors.append(f"{prefix}: missing required field 'id'")
         else:
             sid = step["id"]
-            if sid in step_ids:
+            if not isinstance(sid, str) or not sid.strip():
+                errors.append(f"{prefix}: field 'id' must be a non-empty string")
+            elif sid in step_ids:
                 errors.append(f"{prefix}: duplicate step id '{sid}'")
-            step_ids.add(sid)
+            else:
+                step_ids.add(sid)
         
         stype = step.get("type", "subagent")
         if stype not in STEP_TYPES:
@@ -64,12 +67,30 @@ def validate_workflow(data: dict) -> List[str]:
     
     # Validate depends_on references
     for i, step in enumerate(data["steps"]):
+        if not isinstance(step, dict):
+            continue
         deps = step.get("depends_on", [])
         if isinstance(deps, str):
             deps = [deps]
+        elif not isinstance(deps, list):
+            errors.append(
+                f"steps[{i}].depends_on: must be a step id or list of step ids"
+            )
+            continue
         for dep in deps:
+            if not isinstance(dep, str):
+                errors.append(
+                    f"steps[{i}].depends_on: each step id must be a string"
+                )
+                continue
             if dep not in step_ids:
                 errors.append(f"steps[{i}].depends_on: referenced step '{dep}' not found")
+
+    if not errors:
+        try:
+            resolve_execution_order(data["steps"])
+        except ValueError as error:
+            errors.append(str(error))
     
     return errors
 
@@ -267,8 +288,8 @@ def resolve_execution_order(steps: List[dict]) -> List[List[str]]:
                 wave.append(sid)
         
         if not wave:
-            # Circular dependency or isolated nodes
-            break
+            blocked = ", ".join(sorted(remaining))
+            raise ValueError(f"Circular dependency among steps: {blocked}")
         
         for sid in wave:
             remaining.remove(sid)

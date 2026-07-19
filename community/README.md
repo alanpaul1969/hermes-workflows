@@ -21,6 +21,7 @@ hermes workflow run community/<name>.yaml --native
 | alaya-build.yaml | Flutter APK build pipeline (Gates 4-6): audit → git push → flutter build → scp delivery. Multi-machine Flutter CI/CD pattern. | Build / CI-CD |
 | pre-commit-review.yaml | Pre-commit gate: auto-detect changes → unified code review → auto-fix (2 cycles max) → [verified] commit. ~30-60s. | Code Review |
 | branch-review.yaml | Pre-merge gate: full branch diff vs main → commit quality + churn analysis + merge conflict check. | Code Review |
+| hermes-tweet-signal-brief.yaml | Read-only X/Twitter signal brief using Hermes Tweet catalog discovery and public read routes. | Monitoring |
 
 ## Template Reference
 
